@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -123,4 +125,26 @@ func TestRecordWinsAndRetrievingThem(t *testing.T) {
 	assertStatus(t, response.Code, http.StatusOK)
 
 	assertResponseBody(t, response.Body.String(), "3")
+}
+
+func TestConcurrentWrites(t *testing.T) {
+	wantedCount := 1000
+	server := PlayerServer{NewInMemoryPlayerStore()}
+	player := "Dim"
+
+	var wg sync.WaitGroup
+	wg.Add(wantedCount)
+
+	for i := 0; i < wantedCount; i++ {
+		go func(w *sync.WaitGroup) {
+			server.ServeHTTP(httptest.NewRecorder(), newPostWinRequest(player))
+			w.Done()
+		}(&wg)
+	}
+	wg.Wait()
+
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, newGetScoreRequest(player))
+	assertStatus(t, response.Code, http.StatusOK)
+	assertResponseBody(t, response.Body.String(), strconv.Itoa(wantedCount))
 }
